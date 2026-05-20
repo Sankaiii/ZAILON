@@ -1,4 +1,3 @@
-use tauri::Manager;
 
 #[tauri::command]
 fn get_version() -> String {
