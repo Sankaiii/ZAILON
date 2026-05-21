@@ -1,4 +1,3 @@
-
 #[tauri::command]
 fn get_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
@@ -13,14 +12,6 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![get_version])
-        .setup(|app| {
-            #[cfg(debug_assertions)]
-            {
-                let window = app.get_webview_window("main").unwrap();
-                window.open_devtools();
-            }
-            Ok(())
-        })
         .run(tauri::generate_context!())
         .expect("error while running ZAILON");
 }
