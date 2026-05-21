@@ -43,11 +43,6 @@
       "webviewInstallMode": {
         "type": "downloadBootstrapper",
         "silent": true
-      },
-      "nsis": {
-        "installerIcon": "icons/icon.ico",
-        "installMode": "currentUser",
-        "allowChangeInstallationDirectory": false
       }
     },
     "linux": {
