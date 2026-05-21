@@ -1,4 +1,4 @@
-use tauri::{WebviewWindow, Manager};
+use tauri::WebviewWindow;
 
 #[tauri::command]
 fn get_version() -> String {
@@ -7,20 +7,20 @@ fn get_version() -> String {
 
 #[tauri::command]
 fn close_window(window: WebviewWindow) {
-    window.close().unwrap_or(());
+    let _ = window.close();
 }
 
 #[tauri::command]
 fn minimize_window(window: WebviewWindow) {
-    window.minimize().unwrap_or(());
+    let _ = window.minimize();
 }
 
 #[tauri::command]
 fn toggle_maximize(window: WebviewWindow) {
     if window.is_maximized().unwrap_or(false) {
-        window.unmaximize().unwrap_or(());
+        let _ = window.unmaximize();
     } else {
-        window.maximize().unwrap_or(());
+        let _ = window.maximize();
     }
 }
 
@@ -38,13 +38,6 @@ pub fn run() {
             minimize_window,
             toggle_maximize
         ])
-        .setup(|app| {
-            let window = app.get_webview_window("main")
-                .expect("main window not found");
-            // Show window after setup to prevent white flash
-            window.show().unwrap_or(());
-            Ok(())
-        })
         .run(tauri::generate_context!())
         .expect("error while running ZAILON");
 }
