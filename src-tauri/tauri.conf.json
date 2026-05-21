@@ -20,7 +20,8 @@
         "fullscreen": false,
         "decorations": false,
         "center": true,
-        "transparent": false
+        "transparent": false,
+        "visible": false
       }
     ],
     "security": {
@@ -37,19 +38,22 @@
       "icons/icon.ico"
     ],
     "shortDescription": "Universal Mod Launcher",
-    "longDescription": "ZAILON is a local-first universal mod launcher for anime, UE5, and indie games.",
-    "linux": {
-      "deb": {
-        "depends": []
-      },
-      "appimage": {
-        "bundleMediaFramework": false
-      }
-    },
+    "longDescription": "ZAILON is a local-first universal mod launcher.",
     "windows": {
-      "digestAlgorithm": "sha256",
-      "certificateThumbprint": null,
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["English", "French"],
+        "allowToChangeInstallationDirectory": false
+      },
       "timestampUrl": ""
+    },
+    "linux": {
+      "deb": { "depends": [] },
+      "appimage": { "bundleMediaFramework": false }
     }
   }
 }
