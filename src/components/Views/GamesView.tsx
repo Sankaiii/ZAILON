@@ -1,172 +1,245 @@
-import { Plus, FolderOpen, RefreshCw, Search, ChevronRight, Clock } from 'lucide-react'
+import { Plus, FolderOpen, RefreshCw, Search, Trash2, ToggleLeft, ToggleRight, ScanLine, Gamepad2 } from 'lucide-react'
 import { useState } from 'react'
-import { useStore } from '../../store/useStore'
-import { ModCard } from '../UI/ModCard'
-import { formatTime, timeAgo } from '../../utils'
+import { useStore, isTauri, invoke } from '../../store/useStore'
+import { useT } from '../../i18n'
+
+const LOADER_COLORS: Record<string, string> = {
+  folder: '#e8b84b', pak: '#60b4f7', asi: '#c8f77e', dll: '#f7a07e',
+}
 
 export function GamesView() {
-  const { games, selectedGame, selectedProfile, setSelectedGame, setSelectedProfile, toggleMod } = useStore()
+  const { games, selectedGame, selectedGameId, selectGame, addGame, removeGame,
+    scanMods, toggleMod, deleteMod, setModsPath, setGamePath, isScanning, language, detectGames, isDetecting } = useStore()
+  const t = useT(language)
   const [search, setSearch] = useState('')
-  const [activeTab, setActiveTab] = useState<'mods' | 'settings'>('mods')
+  const [tab, setTab] = useState<'mods' | 'settings'>('mods')
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
-  const filteredMods = selectedProfile.mods.filter(m =>
+  const filteredMods = selectedGame?.mods.filter(m =>
     m.name.toLowerCase().includes(search.toLowerCase())
-  )
-  const activeMods = selectedProfile.mods.filter(m => m.enabled).length
+  ) ?? []
+  const active = selectedGame?.mods.filter(m => m.enabled).length ?? 0
+
+  const handlePickExec = async () => {
+    if (!isTauri || !selectedGame) return
+    const p = await invoke<string|null>('pick_file', { filter: 'exe' }).catch(() => null)
+    if (p) setGamePath(selectedGame.id, p)
+  }
+
+  const handlePickMods = async () => {
+    if (!isTauri || !selectedGame) return
+    const p = await invoke<string|null>('pick_folder').catch(() => null)
+    if (p) { setModsPath(selectedGame.id, p); scanMods(selectedGame.id) }
+  }
 
   return (
     <div className="flex h-full">
-      {/* Games list — 140px */}
-      <div className="w-36 flex flex-col border-r border-white/[0.05] flex-shrink-0">
-        <div className="px-2 pt-3 pb-1.5 flex items-center justify-between">
-          <span className="text-[9px] font-mono text-white/30 uppercase tracking-widest">Games</span>
-          <button className="text-white/30 hover:text-white/60 transition-colors">
-            <Plus size={11} />
-          </button>
+      {/* Games sidebar */}
+      <div className="w-40 flex flex-col border-r border-white/[0.05] flex-shrink-0">
+        <div className="px-3 pt-3 pb-2 flex items-center justify-between">
+          <span className="text-xs font-mono text-white/30 uppercase tracking-widest">{t('games')}</span>
+          <div className="flex gap-1">
+            <button onClick={detectGames} disabled={isDetecting} title={t('detect')}
+              className="p-1 rounded hover:bg-white/[0.06] text-white/30 hover:text-gold transition-all disabled:opacity-40">
+              <ScanLine size={12} />
+            </button>
+            <button onClick={addGame} title={t('add_game')}
+              className="p-1 rounded hover:bg-white/[0.06] text-white/30 hover:text-white transition-all">
+              <Plus size={12} />
+            </button>
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto scrollbar-hide py-1 px-1.5 space-y-0.5">
-          {games.map(game => (
-            <button
-              key={game.id}
-              onClick={() => setSelectedGame(game)}
-              className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md transition-all text-left ${
-                game.id === selectedGame.id
-                  ? 'bg-gold/12 border border-gold/20'
-                  : 'hover:bg-white/[0.04] border border-transparent'
+
+        <div className="flex-1 overflow-y-auto scrollbar-hide py-1 px-2 space-y-0.5">
+          {games.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-24 gap-2 opacity-40 text-center px-2">
+              <Gamepad2 size={20} className="text-white/30" />
+              <p className="text-[10px] text-white/40">{t('no_games')}</p>
+              <button onClick={addGame} className="text-[10px] text-gold/60 hover:text-gold underline">{t('add_game')}</button>
+            </div>
+          ) : games.map(game => (
+            <button key={game.id} onClick={() => selectGame(game.id)}
+              className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg transition-all text-left ${
+                game.id === selectedGameId ? 'bg-gold/12 border border-gold/20' : 'hover:bg-white/[0.04] border border-transparent'
               }`}>
-              <div className="w-7 h-7 rounded-md overflow-hidden flex-shrink-0 bg-ink-50">
-                <img src={game.backgroundArt} alt="" className="w-full h-full object-cover opacity-80" />
+              <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 bg-ink-50 flex items-center justify-center">
+                {game.backgroundArt
+                  ? <img src={game.backgroundArt} alt="" className="w-full h-full object-cover opacity-80" />
+                  : <span className="text-base font-bold text-gold/60">{game.name[0]}</span>
+                }
               </div>
               <div className="min-w-0 flex-1">
-                <p className={`text-[10px] font-body font-medium leading-tight truncate ${
-                  game.id === selectedGame.id ? 'text-gold' : 'text-white/70'
-                }`}>{game.name}</p>
-                <p className="text-[9px] text-white/25 font-mono">{game.profiles.length}p · {formatTime(game.totalPlaytime)}</p>
+                <p className={`text-xs font-medium leading-tight truncate ${game.id === selectedGameId ? 'text-gold' : 'text-white/70'}`}>{game.name}</p>
+                <p className="text-[10px] text-white/25">{game.mods.length} mods</p>
               </div>
             </button>
           ))}
         </div>
       </div>
 
-      {/* Profiles + mods */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Game header */}
-        <div className="px-3 pt-3 pb-2 border-b border-white/[0.04] flex-shrink-0">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <h2 className="font-display font-bold text-sm text-white">{selectedGame.name}</h2>
-              {selectedGame.lastPlayed && (
-                <p className="text-[9px] text-white/30 font-mono">Last played {timeAgo(selectedGame.lastPlayed)}</p>
+      {/* Main panel */}
+      {!selectedGame ? (
+        <div className="flex-1 flex items-center justify-center opacity-40">
+          <p className="text-sm text-white/40">{t('no_games')}</p>
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Header */}
+          <div className="px-4 pt-3 pb-2 border-b border-white/[0.04] flex-shrink-0">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="font-display font-bold text-base text-white">{selectedGame.name}</h2>
+              <div className="flex gap-1">
+                <button onClick={() => scanMods(selectedGame.id)} disabled={isScanning}
+                  title={t('scan_mods')}
+                  className="p-1.5 rounded-lg hover:bg-white/[0.06] text-white/30 hover:text-gold transition-all disabled:opacity-40">
+                  <RefreshCw size={13} className={isScanning ? 'animate-spin' : ''} />
+                </button>
+                <button onClick={handlePickMods} title={t('add_mods_folder')}
+                  className="p-1.5 rounded-lg hover:bg-white/[0.06] text-white/30 hover:text-white transition-all">
+                  <FolderOpen size={13} />
+                </button>
+                <button onClick={() => setConfirmDelete(selectedGame.id)}
+                  className="p-1.5 rounded-lg hover:bg-red-500/20 text-white/20 hover:text-red-400 transition-all">
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex items-center gap-0 border-b border-white/[0.04] -mx-4 px-4">
+              {(['mods', 'settings'] as const).map(tab_ => (
+                <button key={tab_} onClick={() => setTab(tab_)}
+                  className={`px-3 py-1.5 text-xs font-body font-medium capitalize transition-all border-b-2 -mb-px ${
+                    tab === tab_ ? 'text-gold border-gold' : 'text-white/30 border-transparent hover:text-white/60'
+                  }`}>
+                  {tab_ === 'mods' ? `${t('mods')} (${active}/${selectedGame.mods.length})` : t('settings')}
+                </button>
+              ))}
+              {tab === 'mods' && (
+                <div className="flex-1 flex justify-end py-1">
+                  <div className="relative">
+                    <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-white/25" />
+                    <input value={search} onChange={e => setSearch(e.target.value)}
+                      placeholder={t('search')}
+                      className="bg-white/[0.04] border border-white/[0.06] rounded text-xs pl-6 pr-2 py-0.5 text-white/70 placeholder-white/25 focus:outline-none focus:border-gold/30 w-32" />
+                  </div>
+                </div>
               )}
             </div>
-            <div className="flex gap-1">
-              <button className="p-1 rounded hover:bg-white/[0.06] text-white/30 hover:text-white/60 transition-all">
-                <RefreshCw size={11} />
-              </button>
-              <button className="p-1 rounded hover:bg-white/[0.06] text-white/30 hover:text-white/60 transition-all">
-                <FolderOpen size={11} />
-              </button>
+          </div>
+
+          {/* Mods list */}
+          {tab === 'mods' && (
+            <div className="flex-1 overflow-y-auto p-3 scrollbar-hide">
+              {!selectedGame.modsPath ? (
+                <div className="flex flex-col items-center justify-center h-full gap-3 opacity-60">
+                  <FolderOpen size={28} className="text-white/30" />
+                  <p className="text-sm text-white/40 text-center">Définis le dossier mods pour scanner</p>
+                  <button onClick={handlePickMods}
+                    className="px-4 py-1.5 rounded-lg bg-gold/15 text-gold border border-gold/25 text-sm hover:bg-gold/25 transition-all">
+                    {t('add_mods_folder')}
+                  </button>
+                </div>
+              ) : filteredMods.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full gap-2 opacity-40">
+                  <span className="text-3xl">📦</span>
+                  <p className="text-sm text-white/40">{t('no_mods')}</p>
+                  <button onClick={() => scanMods(selectedGame.id)}
+                    className="text-xs text-gold/60 hover:text-gold underline">{t('scan_mods')}</button>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {filteredMods.map(mod => {
+                    const color = LOADER_COLORS[mod.mod_type] ?? '#888'
+                    return (
+                      <div key={mod.id} className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all ${
+                        mod.enabled ? 'bg-white/[0.04] border-white/[0.06] hover:border-gold/20' : 'bg-white/[0.02] border-white/[0.03] opacity-60'
+                      }`}>
+                        <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded flex-shrink-0"
+                          style={{ color, backgroundColor: `${color}20`, border: `1px solid ${color}40` }}>
+                          {mod.mod_type.toUpperCase()}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-white/90 truncate">{mod.name}</p>
+                          <p className="text-[10px] text-white/30">{mod.size_mb > 0 ? `${mod.size_mb} MB` : ''}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => deleteMod(selectedGame.id, mod.id)}
+                            className="p-1 text-white/30 hover:text-red-400 transition-colors">
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                        <button onClick={() => toggleMod(selectedGame.id, mod.id)}
+                          className="flex-shrink-0 transition-all">
+                          {mod.enabled
+                            ? <ToggleRight size={20} className="text-gold" />
+                            : <ToggleLeft size={20} className="text-white/25" />}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
-          </div>
+          )}
 
-          {/* Profile tabs */}
-          <div className="flex items-center gap-1">
-            {selectedGame.profiles.map(p => (
-              <button
-                key={p.id}
-                onClick={() => setSelectedProfile(p)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-body transition-all ${
-                  p.id === selectedProfile.id
-                    ? 'bg-gold/15 text-gold border border-gold/25'
-                    : 'text-white/40 hover:text-white/70 hover:bg-white/[0.04] border border-transparent'
-                }`}>
-                {p.name}
-                <span className="text-[8px] opacity-60">{p.mods.filter(m=>m.enabled).length}</span>
-              </button>
-            ))}
-            <button className="p-1 rounded text-white/20 hover:text-white/50 hover:bg-white/[0.04] transition-all">
-              <Plus size={10} />
-            </button>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex items-center gap-0 border-b border-white/[0.04] flex-shrink-0 px-3">
-          {(['mods', 'settings'] as const).map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-3 py-1.5 text-[10px] font-body font-medium capitalize transition-all border-b-2 -mb-px ${
-                activeTab === tab
-                  ? 'text-gold border-gold'
-                  : 'text-white/30 border-transparent hover:text-white/60'
-              }`}>
-              {tab}
-              {tab === 'mods' && <span className="ml-1 text-[9px] opacity-60">{activeMods}/{selectedProfile.mods.length}</span>}
-            </button>
-          ))}
-
-          <div className="flex-1" />
-          <div className="relative py-1">
-            <Search size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-white/25" />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search mods..."
-              className="bg-white/[0.04] border border-white/[0.06] rounded text-[10px] pl-5 pr-2 py-0.5 text-white/70 placeholder-white/25 focus:outline-none focus:border-gold/30 w-28"
-            />
-          </div>
-        </div>
-
-        {/* Mods list */}
-        {activeTab === 'mods' && (
-          <div className="flex-1 overflow-y-auto p-3 space-y-1 scrollbar-hide">
-            {filteredMods.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-24 gap-2 opacity-40">
-                <span className="text-2xl">📦</span>
-                <p className="text-[10px] text-white/40">No mods yet — browse Explore</p>
+          {/* Settings tab */}
+          {tab === 'settings' && (
+            <div className="flex-1 p-4 space-y-4 overflow-y-auto scrollbar-hide">
+              <div>
+                <label className="text-[10px] font-mono text-white/30 uppercase tracking-widest block mb-1.5">{t('game_path')}</label>
+                <div className="flex gap-2">
+                  <input value={selectedGame.execPath} readOnly
+                    placeholder="Sélectionner le .exe du jeu..."
+                    className="flex-1 bg-white/[0.04] border border-white/[0.06] rounded text-xs px-2 py-1.5 text-white/50 placeholder-white/20 focus:outline-none font-mono" />
+                  <button onClick={handlePickExec}
+                    className="px-2 py-1 bg-white/[0.06] rounded text-xs text-white/50 hover:text-white border border-white/[0.06] transition-all">{t('browse')}</button>
+                </div>
               </div>
-            ) : (
-              filteredMods.map(mod => (
-                <ModCard key={mod.id} mod={mod} onToggle={() => toggleMod(mod.id)} />
-              ))
-            )}
-          </div>
-        )}
-
-        {activeTab === 'settings' && (
-          <div className="flex-1 p-3 space-y-3">
-            <div className="space-y-1.5">
-              <label className="text-[9px] font-mono text-white/30 uppercase tracking-widest">Game Path</label>
-              <div className="flex gap-1.5">
-                <input
-                  placeholder={selectedGame.execPath || 'Select .exe...'}
-                  className="flex-1 bg-white/[0.04] border border-white/[0.06] rounded text-[10px] px-2 py-1.5 text-white/50 placeholder-white/25 focus:outline-none focus:border-gold/30 font-mono"
-                />
-                <button className="px-2 py-1 bg-white/[0.06] rounded text-[10px] text-white/50 hover:text-white/80 border border-white/[0.06] transition-all">
-                  Browse
+              <div>
+                <label className="text-[10px] font-mono text-white/30 uppercase tracking-widest block mb-1.5">{t('mods_path')}</label>
+                <div className="flex gap-2">
+                  <input value={selectedGame.modsPath} readOnly
+                    placeholder="Sélectionner le dossier mods..."
+                    className="flex-1 bg-white/[0.04] border border-white/[0.06] rounded text-xs px-2 py-1.5 text-white/50 placeholder-white/20 focus:outline-none font-mono" />
+                  <button onClick={handlePickMods}
+                    className="px-2 py-1 bg-white/[0.06] rounded text-xs text-white/50 hover:text-white border border-white/[0.06] transition-all">{t('browse')}</button>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 pt-2">
+                <Clock2 mins={selectedGame.playtime} />
+              </div>
+              <div className="pt-2 border-t border-white/[0.05]">
+                <button onClick={() => setConfirmDelete(selectedGame.id)}
+                  className="flex items-center gap-2 text-xs text-red-400/60 hover:text-red-400 transition-colors">
+                  <Trash2 size={12} /> Supprimer ce jeu de ZAILON
                 </button>
               </div>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-[9px] font-mono text-white/30 uppercase tracking-widest">Mods Folder</label>
-              <div className="flex gap-1.5">
-                <input
-                  placeholder={selectedGame.modsPath || 'Select mods folder...'}
-                  className="flex-1 bg-white/[0.04] border border-white/[0.06] rounded text-[10px] px-2 py-1.5 text-white/50 placeholder-white/25 focus:outline-none focus:border-gold/30 font-mono"
-                />
-                <button className="px-2 py-1 bg-white/[0.06] rounded text-[10px] text-white/50 hover:text-white/80 border border-white/[0.06] transition-all">
-                  Browse
-                </button>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 pt-1">
-              <Clock size={11} className="text-gold/40" />
-              <span className="text-[10px] text-white/40 font-mono">Total playtime: {formatTime(selectedGame.totalPlaytime)}</span>
+          )}
+        </div>
+      )}
+
+      {/* Confirm delete dialog */}
+      {confirmDelete && (
+        <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-ink-200 border border-white/[0.1] rounded-xl p-5 w-64 shadow-2xl">
+            <p className="text-sm text-white/80 mb-4">Supprimer ce jeu de ZAILON ? (les fichiers ne seront pas effacés)</p>
+            <div className="flex gap-2">
+              <button onClick={() => { removeGame(confirmDelete); setConfirmDelete(null) }}
+                className="flex-1 py-1.5 bg-red-500/80 text-white rounded-lg text-xs font-medium hover:bg-red-600 transition-all">Supprimer</button>
+              <button onClick={() => setConfirmDelete(null)}
+                className="flex-1 py-1.5 bg-white/[0.06] text-white/60 rounded-lg text-xs hover:bg-white/[0.1] transition-all">Annuler</button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
+}
+
+function Clock2({ mins }: { mins: number }) {
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return <span className="text-xs text-white/30 font-mono">⏱ {h}h {m}m de jeu</span>
 }

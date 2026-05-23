@@ -1,192 +1,281 @@
-import { Search, Download, Star, Grid, List } from 'lucide-react'
-import { useStore, MOCK_EXPLORE_MODS } from '../../store/useStore'
-import { PLATFORM_COLORS, PLATFORM_LABELS, formatDownloads } from '../../utils'
-import { Platform, ExplodMod } from '../../types'
+import { Search, Download, Star, Grid, List, ExternalLink, RefreshCw } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useStore, isTauri, MOCK_EXPLORE, GBMod } from '../../store/useStore'
+import { useT } from '../../i18n'
+import { Platform } from '../../types'
 import { Toggle } from '../UI/Toggle'
+import { PLATFORM_COLORS, PLATFORM_LABELS, formatDownloads } from '../../utils'
 
 const PLATFORMS: Platform[] = ['gamebanana', 'nexus', 'curseforge', 'ayakamods']
-const GAMES = ['all', 'Genshin Impact', 'Wuthering Waves', 'Neverness to Everness', 'Zenless Zone Zero', 'Honkai: Star Rail', 'Cyberpunk 2077']
+
+// GameBanana game IDs
+const GB_GAME_IDS: Record<string, number> = {
+  'Neverness to Everness': 20920,
+  'Genshin Impact': 7545,
+  'Honkai: Star Rail': 18874,
+  'Zenless Zone Zero': 20292,
+  'Wuthering Waves': 20545,
+  'all': 20920,
+}
 
 export function ExploreView() {
-  const {
-    explorePlatform, exploreGame, exploreSearch, exploreGrid, nsfw,
+  const { games, selectedGame, explorePlatform, exploreGame, exploreSearch, exploreGrid, nsfw,
     setExplorePlatform, setExploreGame, setExploreSearch, setExploreGrid,
-    installMod, selectedProfile,
-  } = useStore()
+    gbMods, gbLoading, fetchGB, installMod, language } = useStore()
+  const t = useT(language)
+  const [page, setPage] = useState(1)
+  const [installing, setInstalling] = useState<number | null>(null)
+  const [installed, setInstalled] = useState<Set<number>>(new Set())
+  const [gbFiles, setGbFiles] = useState<Record<number, {id:number,name:string,url:string,size:number}[]>>({})
+  const [showFiles, setShowFiles] = useState<number | null>(null)
 
-  const installed = new Set(selectedProfile.mods.map(m => m.sourceUrl))
+  const gameList = ['all', ...games.map(g => g.name)]
+  const gameId = GB_GAME_IDS[exploreGame] ?? GB_GAME_IDS['all']
 
-  const filtered = MOCK_EXPLORE_MODS.filter(m => {
-    if (!nsfw && m.nsfw) return false
-    if (exploreGame !== 'all' && m.game !== 'All Games' && m.game !== exploreGame) return false
-    if (exploreSearch && !m.name.toLowerCase().includes(exploreSearch.toLowerCase())) return false
-    if (m.platform !== explorePlatform) return false
-    return true
-  })
+  useEffect(() => {
+    if (isTauri && explorePlatform === 'gamebanana') {
+      fetchGB(gameId, exploreSearch, page)
+    }
+  }, [explorePlatform, exploreGame, page])
+
+  const handleSearch = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && isTauri && explorePlatform === 'gamebanana') {
+      setPage(1)
+      fetchGB(gameId, exploreSearch, 1)
+    }
+  }
+
+  const handleInstall = async (mod: GBMod) => {
+    if (!isTauri || !selectedGame?.modsPath) return
+    const files = gbFiles[mod.id]
+    if (!files) {
+      // Fetch files first
+      const { invoke } = await import('@tauri-apps/api/core')
+      const f = await invoke<typeof files>('fetch_mod_files', { modId: mod.id }).catch(() => [])
+      setGbFiles(prev => ({ ...prev, [mod.id]: f }))
+      setShowFiles(mod.id)
+      return
+    }
+    if (files.length === 1) {
+      setInstalling(mod.id)
+      await installMod(selectedGame.id, files[0].url, files[0].name).catch(console.error)
+      setInstalled(prev => new Set([...prev, mod.id]))
+      setInstalling(null)
+    } else {
+      setShowFiles(mod.id)
+    }
+  }
+
+  const displayMods: GBMod[] = isTauri && explorePlatform === 'gamebanana' ? gbMods : MOCK_EXPLORE.map(m => ({
+    id: parseInt(m.id), name: m.name, author: m.author, downloads: m.downloads,
+    likes: 0, thumbnail: m.thumbnail, url: m.url, description: m.description,
+  }))
 
   return (
     <div className="flex h-full">
-      {/* Main content */}
+      {/* Main */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top bar */}
+        {/* Search bar */}
         <div className="px-3 pt-3 pb-2 border-b border-white/[0.04] flex-shrink-0 flex items-center gap-2">
           <div className="relative flex-1">
-            <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30" />
-            <input
-              value={exploreSearch}
-              onChange={e => setExploreSearch(e.target.value)}
-              placeholder={`Search ${PLATFORM_LABELS[explorePlatform]}...`}
-              className="w-full bg-white/[0.04] border border-white/[0.06] rounded-lg text-xs pl-7 pr-3 py-1.5 text-white/80 placeholder-white/25 focus:outline-none focus:border-gold/30 font-body"
-            />
+            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30" />
+            <input value={exploreSearch} onChange={e => setExploreSearch(e.target.value)} onKeyDown={handleSearch}
+              placeholder={`${t('search')} (Entrée pour rechercher)`}
+              className="w-full bg-white/[0.04] border border-white/[0.06] rounded-lg text-xs pl-7 pr-3 py-1.5 text-white/80 placeholder-white/25 focus:outline-none focus:border-gold/30" />
           </div>
+          {gbLoading && <RefreshCw size={13} className="text-white/30 animate-spin" />}
           <button onClick={() => setExploreGrid(!exploreGrid)}
             className="p-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] text-white/40 hover:text-white/70 transition-all">
             {exploreGrid ? <List size={13} /> : <Grid size={13} />}
           </button>
         </div>
 
-        {/* Mod grid/list */}
+        {/* Notice si pas de modsPath */}
+        {selectedGame && !selectedGame.modsPath && (
+          <div className="px-3 py-2 bg-gold/[0.06] border-b border-gold/10 text-xs text-gold/70">
+            💡 Configure le dossier mods dans Jeux → Settings pour installer directement.
+          </div>
+        )}
+
+        {/* Mods */}
         <div className="flex-1 overflow-y-auto p-3 scrollbar-hide">
-          {filtered.length === 0 ? (
+          {displayMods.length === 0 && !gbLoading && (
             <div className="flex flex-col items-center justify-center h-full gap-2 opacity-40">
-              <Compass16 />
-              <p className="text-xs text-white/40">No mods found</p>
-              {!nsfw && <p className="text-[10px] text-white/25">NSFW filter is active</p>}
+              <Search size={28} className="text-white/30" />
+              <p className="text-sm text-white/40">{t('no_mods')}</p>
             </div>
-          ) : exploreGrid ? (
+          )}
+          {exploreGrid ? (
             <div className="grid grid-cols-3 gap-2">
-              {filtered.map(mod => (
-                <ModTile key={mod.id} mod={mod} installed={installed.has(mod.url)} onInstall={() => installMod(mod)} />
+              {displayMods.map(mod => (
+                <ModTile key={mod.id} mod={mod} installed={installed.has(mod.id)}
+                  installing={installing === mod.id}
+                  canInstall={!!(selectedGame?.modsPath)}
+                  onInstall={() => handleInstall(mod)}
+                  onOpen={() => {
+                    if (isTauri) invoke_open(`https://gamebanana.com/mods/${mod.id}`)
+                    else window.open(`https://gamebanana.com/mods/${mod.id}`, '_blank')
+                  }} />
               ))}
             </div>
           ) : (
             <div className="space-y-1">
-              {filtered.map(mod => (
-                <ModRow key={mod.id} mod={mod} installed={installed.has(mod.url)} onInstall={() => installMod(mod)} />
+              {displayMods.map(mod => (
+                <ModRow key={mod.id} mod={mod} installed={installed.has(mod.id)}
+                  installing={installing === mod.id}
+                  canInstall={!!(selectedGame?.modsPath)}
+                  onInstall={() => handleInstall(mod)} />
               ))}
+            </div>
+          )}
+          {/* Pagination */}
+          {displayMods.length > 0 && (
+            <div className="flex items-center justify-center gap-2 mt-4">
+              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)}
+                className="px-3 py-1 rounded text-xs bg-white/[0.04] border border-white/[0.06] text-white/40 disabled:opacity-30 hover:text-white transition-all">←</button>
+              <span className="text-xs text-white/30 font-mono">Page {page}</span>
+              <button onClick={() => setPage(p => p + 1)}
+                className="px-3 py-1 rounded text-xs bg-white/[0.04] border border-white/[0.06] text-white/40 hover:text-white transition-all">→</button>
             </div>
           )}
         </div>
       </div>
 
-      {/* Right sidebar — filters */}
+      {/* Right sidebar */}
       <div className="w-36 border-l border-white/[0.05] flex flex-col flex-shrink-0">
-        {/* Platform */}
         <div className="px-2.5 pt-3 pb-2">
-          <p className="text-[9px] font-mono text-white/25 uppercase tracking-widest mb-2">Platform</p>
+          <p className="text-[10px] font-mono text-white/25 uppercase tracking-widest mb-2">Platform</p>
           <div className="space-y-0.5">
             {PLATFORMS.map(p => {
               const color = PLATFORM_COLORS[p]
               const active = explorePlatform === p
               return (
-                <button key={p} onClick={() => setExplorePlatform(p)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-all ${
-                    active ? 'bg-white/[0.08]' : 'hover:bg-white/[0.04]'
-                  }`}>
-                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: active ? color : '#ffffff30' }} />
-                  <span className={`text-[10px] font-body transition-colors ${active ? 'text-white/90' : 'text-white/40'}`}>
-                    {PLATFORM_LABELS[p]}
-                  </span>
+                <button key={p} onClick={() => { setExplorePlatform(p); setPage(1) }}
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left transition-all ${active ? 'bg-white/[0.08]' : 'hover:bg-white/[0.04]'}`}>
+                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: active ? color : '#ffffff30' }} />
+                  <span className={`text-xs font-body transition-colors ${active ? 'text-white/90' : 'text-white/40'}`}>{PLATFORM_LABELS[p]}</span>
                 </button>
               )
             })}
           </div>
         </div>
-
         <div className="mx-2.5 border-t border-white/[0.05]" />
-
-        {/* Game filter */}
         <div className="px-2.5 pt-2 pb-2">
-          <p className="text-[9px] font-mono text-white/25 uppercase tracking-widest mb-2">Game</p>
+          <p className="text-[10px] font-mono text-white/25 uppercase tracking-widest mb-2">Game</p>
           <div className="space-y-0.5">
-            {GAMES.map(g => (
-              <button key={g} onClick={() => setExploreGame(g)}
-                className={`w-full text-left px-2 py-1 rounded text-[10px] font-body transition-all capitalize ${
-                  exploreGame === g
-                    ? 'text-gold bg-gold/10'
-                    : 'text-white/35 hover:text-white/65 hover:bg-white/[0.04]'
-                }`}>
+            {gameList.slice(0, 8).map(g => (
+              <button key={g} onClick={() => { setExploreGame(g); setPage(1) }}
+                className={`w-full text-left px-2 py-1 rounded text-xs transition-all ${exploreGame === g ? 'text-gold bg-gold/10' : 'text-white/35 hover:text-white/65 hover:bg-white/[0.04]'}`}>
                 {g === 'all' ? 'All Games' : g.split(' ').slice(-1)[0]}
               </button>
             ))}
           </div>
         </div>
-
         <div className="flex-1" />
-
-        {/* NSFW toggle */}
         <div className="px-2.5 pb-3 flex items-center gap-2">
-          <Toggle checked={useStore.getState().nsfw} onChange={useStore.getState().toggleNSFW} size="sm" />
-          <span className="text-[9px] text-white/30 font-mono">NSFW</span>
+          <Toggle checked={nsfw} onChange={useStore.getState().toggleNSFW} size="sm" />
+          <span className="text-[10px] text-white/30 font-mono">NSFW</span>
         </div>
       </div>
+
+      {/* File picker modal */}
+      {showFiles !== null && gbFiles[showFiles] && (
+        <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-ink-200 border border-white/[0.1] rounded-xl p-5 w-80 shadow-2xl">
+            <p className="text-sm font-display font-bold text-white mb-3">Choisir un fichier</p>
+            <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-hide">
+              {gbFiles[showFiles].map(f => (
+                <button key={f.id} onClick={async () => {
+                  setShowFiles(null)
+                  if (!selectedGame?.modsPath) return
+                  setInstalling(showFiles)
+                  await installMod(selectedGame.id, f.url, f.name).catch(console.error)
+                  setInstalled(prev => new Set([...prev, showFiles]))
+                  setInstalling(null)
+                }} className="w-full flex items-center justify-between p-2 rounded-lg bg-white/[0.04] border border-white/[0.06] hover:border-gold/30 transition-all text-left">
+                  <span className="text-xs text-white/80 truncate">{f.name}</span>
+                  <span className="text-[10px] text-white/30 ml-2 flex-shrink-0">{(f.size/1024/1024).toFixed(1)}MB</span>
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setShowFiles(null)}
+              className="mt-3 w-full py-1.5 bg-white/[0.04] rounded-lg text-xs text-white/50 hover:text-white transition-all">Annuler</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function Compass16() {
-  return <span className="text-3xl opacity-30">🧭</span>
+async function invoke_open(url: string) {
+  const { invoke: ti } = await import('@tauri-apps/api/core')
+  await ti('open_url', { url }).catch(() => window.open(url, '_blank'))
 }
 
-function ModTile({ mod, installed, onInstall }: { mod: ExplodMod, installed: boolean, onInstall: () => void }) {
+function ModTile({ mod, installed, installing, canInstall, onInstall, onOpen }: {
+  mod: GBMod; installed: boolean; installing: boolean; canInstall: boolean;
+  onInstall: () => void; onOpen: () => void;
+}) {
   return (
     <div className="group relative rounded-lg overflow-hidden border border-white/[0.06] hover:border-gold/20 transition-all bg-ink-200">
       <div className="aspect-video relative overflow-hidden">
-        <img src={mod.thumbnail} alt={mod.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+        <img src={mod.thumbnail || 'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=300&q=60'}
+          alt={mod.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          onError={e => { (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=300&q=60' }} />
         <div className="absolute inset-0 bg-gradient-to-t from-ink-300/90 via-transparent to-transparent" />
-        <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-end justify-between">
-          <div className="flex gap-0.5">
-            {mod.tags.slice(0, 2).map(t => (
-              <span key={t} className="text-[8px] bg-black/50 text-white/60 px-1 py-0.5 rounded">{t}</span>
-            ))}
-          </div>
-        </div>
       </div>
       <div className="p-2">
-        <p className="text-[10px] font-body font-medium text-white/90 truncate leading-tight">{mod.name}</p>
-        <p className="text-[9px] text-white/40 truncate">{mod.author}</p>
+        <p className="text-xs font-medium text-white/90 truncate leading-tight">{mod.name}</p>
+        <p className="text-[10px] text-white/40 truncate">{mod.author}</p>
         <div className="flex items-center justify-between mt-1.5">
           <div className="flex items-center gap-2">
-            <span className="flex items-center gap-0.5 text-[9px] text-gold/60">
-              <Star size={8} fill="currentColor" />{mod.rating}
+            <span className="flex items-center gap-0.5 text-[10px] text-gold/60">
+              <Star size={8} fill="currentColor" />{mod.likes}
             </span>
-            <span className="text-[9px] text-white/25">↓{formatDownloads(mod.downloads)}</span>
+            <span className="text-[10px] text-white/25">↓{formatDownloads(mod.downloads)}</span>
           </div>
-          <button
-            onClick={onInstall}
-            disabled={installed}
-            className={`flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded transition-all ${
-              installed
-                ? 'text-gold/50 bg-gold/5 cursor-default'
-                : 'text-ink-400 bg-gold hover:bg-gold-bright'
-            }`}>
-            {installed ? '✓' : <Download size={8} />}
-            {installed ? 'Installed' : 'Install'}
-          </button>
+          <div className="flex gap-1">
+            <button onClick={onOpen} className="p-0.5 text-white/20 hover:text-white/60 transition-colors">
+              <ExternalLink size={10} />
+            </button>
+            {canInstall && (
+              <button onClick={onInstall} disabled={installing}
+                className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-all ${
+                  installed ? 'text-gold/50 bg-gold/5 cursor-default' : installing ? 'text-white/40' : 'text-ink-400 bg-gold hover:bg-gold-bright'
+                }`}>
+                {installing ? '...' : installed ? '✓' : <Download size={9} />}
+                {installing ? '' : installed ? 'OK' : ''}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-function ModRow({ mod, installed, onInstall }: { mod: ExplodMod, installed: boolean, onInstall: () => void }) {
+function ModRow({ mod, installed, installing, canInstall, onInstall }: {
+  mod: GBMod; installed: boolean; installing: boolean; canInstall: boolean; onInstall: () => void;
+}) {
   return (
-    <div className="flex items-center gap-3 px-2 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.04] hover:border-gold/15 transition-all group">
-      <img src={mod.thumbnail} alt="" className="w-10 h-7 object-cover rounded flex-shrink-0" />
+    <div className="flex items-center gap-3 px-2 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.04] hover:border-gold/15 transition-all">
+      <img src={mod.thumbnail || 'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=300&q=60'}
+        alt="" className="w-12 h-8 object-cover rounded flex-shrink-0"
+        onError={e => { (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=300&q=60' }} />
       <div className="flex-1 min-w-0">
-        <p className="text-[10px] font-body font-medium text-white/90 truncate">{mod.name}</p>
-        <p className="text-[9px] text-white/35">{mod.author} · {mod.game}</p>
+        <p className="text-xs font-medium text-white/90 truncate">{mod.name}</p>
+        <p className="text-[10px] text-white/35">{mod.author}</p>
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">
-        <span className="text-[9px] text-white/25">↓{formatDownloads(mod.downloads)}</span>
-        <button
-          onClick={onInstall}
-          disabled={installed}
-          className={`text-[9px] px-2 py-0.5 rounded transition-all ${
-            installed ? 'text-gold/40 cursor-default' : 'text-ink-400 bg-gold hover:bg-gold-bright'
-          }`}>
-          {installed ? '✓' : 'Install'}
-        </button>
+        <span className="text-[10px] text-white/25">↓{formatDownloads(mod.downloads)}</span>
+        {canInstall && (
+          <button onClick={onInstall} disabled={installing || installed}
+            className={`text-xs px-2 py-0.5 rounded transition-all ${
+              installed ? 'text-gold/40 cursor-default' : installing ? 'text-white/30' : 'text-ink-400 bg-gold hover:bg-gold-bright'
+            }`}>
+            {installing ? '...' : installed ? '✓' : 'Install'}
+          </button>
+        )}
       </div>
     </div>
   )
