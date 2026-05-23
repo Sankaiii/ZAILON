@@ -224,3 +224,64 @@ export const useStore = create<Store>()(
     }
   )
 )
+
+// ─── GameBanana API (JS fetch, no Rust needed) ────────────────────────────────
+export async function fetchGBMods(gameId: number, search: string, page: number): Promise<GBMod[]> {
+  try {
+    const url = search
+      ? `https://api.gamebanana.com/Core/List/New?gameid=${gameId}&itemtype=Mod&sKeywords=${encodeURIComponent(search)}&nPerPage=20&nPage=${page}&fields=id,name,Owner().name,Downloads().nDownloadCount(),Likes().nCount(),Preview().sSubFeedImageUrl(),description`
+      : `https://api.gamebanana.com/Core/List/New?gameid=${gameId}&itemtype=Mod&nPerPage=20&nPage=${page}&fields=id,name,Owner().name,Downloads().nDownloadCount(),Likes().nCount(),Preview().sSubFeedImageUrl(),description`
+    const res = await fetch(url)
+    const raw = await res.json()
+    if (!Array.isArray(raw)) return []
+    return raw.map((item: unknown[]) => ({
+      id: Number(item[0]) || 0,
+      name: String(item[1] || ''),
+      author: String(item[2] || 'Unknown'),
+      downloads: Number(item[3]) || 0,
+      likes: Number(item[4]) || 0,
+      thumbnail: String(item[5] || ''),
+      url: `https://gamebanana.com/mods/${item[0]}`,
+      description: String(item[6] || ''),
+    }))
+  } catch { return [] }
+}
+
+export async function fetchGBFiles(modId: number): Promise<{ id: number; name: string; url: string; size: number }[]> {
+  try {
+    const url = `https://api.gamebanana.com/Core/Item/Data?itemtype=Mod&itemid=${modId}&fields=Files().aFiles()`
+    const res = await fetch(url)
+    const raw = await res.json()
+    const fileMap = raw?.[0]
+    if (!fileMap || typeof fileMap !== 'object') return []
+    return Object.values(fileMap as Record<string, Record<string, unknown>>).map(f => ({
+      id: Number(f._idRow) || 0,
+      name: String(f._sFile || 'mod.zip'),
+      url: String(f._sDownloadUrl || ''),
+      size: Number(f._nFilesize) || 0,
+    })).filter(f => f.url)
+  } catch { return [] }
+}
+
+export async function checkGitHubUpdates(): Promise<{ available: boolean; version: string; url: string; body: string }> {
+  try {
+    const res = await fetch('https://api.github.com/repos/Sankaiii/ZAILON/releases/latest', {
+      headers: { 'User-Agent': 'ZAILON-Launcher/1.0' }
+    })
+    const json = await res.json()
+    const latest = (json.tag_name || '').replace(/^v/, '')
+    const current = '1.0.0'
+    return { available: !!latest && latest !== current, version: latest, url: json.html_url || '', body: json.body || '' }
+  } catch { return { available: false, version: '', url: '', body: '' } }
+}
+
+export async function downloadAndInstallMod(url: string, fileName: string, modsPath: string): Promise<void> {
+  const res = await fetch(url)
+  const bytes = await res.arrayBuffer()
+  const data = Array.from(new Uint8Array(bytes))
+  if (fileName.endsWith('.zip')) {
+    await invoke('extract_zip_bytes', { data, destPath: `${modsPath}/${fileName.replace('.zip', '')}` })
+  } else {
+    await invoke('write_file', { path: `${modsPath}/${fileName}`, data })
+  }
+}
