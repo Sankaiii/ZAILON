@@ -1,11 +1,7 @@
 use tauri::WebviewWindow;
 use std::path::{Path, PathBuf};
 use std::fs;
-use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
-
-// ─── Global Discord state ─────────────────────────────────────────────────────
-static DISCORD_ENABLED: Mutex<bool> = Mutex::new(false);
 
 // ─── Window controls ──────────────────────────────────────────────────────────
 #[tauri::command] fn close_window(window: WebviewWindow) { let _ = window.close(); }
@@ -19,7 +15,7 @@ static DISCORD_ENABLED: Mutex<bool> = Mutex::new(false);
 #[tauri::command]
 async fn pick_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let r = app.dialog().file().pick_folder().blocking_pick();
+    let r = app.dialog().file().pick_folder().await;
     Ok(r.map(|p| p.to_string_lossy().to_string()))
 }
 
@@ -27,9 +23,9 @@ async fn pick_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
 async fn pick_file(app: tauri::AppHandle, filter: String) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
     let r = app.dialog().file()
-        .add_filter("Executable", &[&filter])
+        .add_filter("Executable", &[filter.as_str()])
         .pick_file()
-        .blocking_pick();
+        .await;
     Ok(r.map(|p| p.to_string_lossy().to_string()))
 }
 
