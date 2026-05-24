@@ -20,21 +20,32 @@ fn toggle_maximize(window: WebviewWindow) {
 #[tauri::command]
 async fn pick_folder(app: tauri::AppHandle) -> Option<String> {
     use tauri_plugin_dialog::DialogExt;
-    app.dialog()
-        .file()
-        .pick_folder()
+    use std::sync::mpsc;
+    let (tx, rx) = mpsc::channel();
+    app.dialog().file().pick_folder(move |f| {
+        let _ = tx.send(f);
+    });
+    tauri::async_runtime::spawn_blocking(move || rx.recv().ok().flatten())
         .await
+        .ok()
+        .flatten()
         .map(|p| p.to_string())
 }
 
 #[tauri::command]
 async fn pick_file(app: tauri::AppHandle) -> Option<String> {
     use tauri_plugin_dialog::DialogExt;
-    app.dialog()
-        .file()
+    use std::sync::mpsc;
+    let (tx, rx) = mpsc::channel();
+    app.dialog().file()
         .add_filter("Executable", &["exe"])
-        .pick_file()
+        .pick_file(move |f| {
+            let _ = tx.send(f);
+        });
+    tauri::async_runtime::spawn_blocking(move || rx.recv().ok().flatten())
         .await
+        .ok()
+        .flatten()
         .map(|p| p.to_string())
 }
 
