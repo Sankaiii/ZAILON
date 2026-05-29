@@ -230,7 +230,7 @@ export const useStore = create<Store>()(
 export async function fetchGBMods(gameId: number, search: string, page: number): Promise<GBMod[]> {
   try {
     const base = 'https://api.gamebanana.com'
-    const fields = 'id,name,Owner().name,Downloads().nDownloadCount(),Likes().nCount(),Preview().sSubFeedImageUrl(),description'
+    const fields = 'name,Owner()._sName,Downloads()._nDownloadCount,Likes()._nCount,Preview()._sSubFeedImageUrl,description'
     const url = search
       ? `${base}/Core/List/Like?itemtype=Mod&field=name&match=${encodeURIComponent(search)}&gameid=${gameId}&nPerPage=20&nPage=${page}&fields=${fields}`
       : `${base}/Core/List/New?gameid=${gameId}&itemtype=Mod&nPerPage=20&nPage=${page}&fields=${fields}`
