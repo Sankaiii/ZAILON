@@ -1,6 +1,6 @@
 {
   "productName": "ZAILON",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "identifier": "com.souanpt.zailon",
   "build": {
     "beforeDevCommand": "npm run dev",

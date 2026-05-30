@@ -1,6 +1,6 @@
 [package]
 name = "zailon"
-version = "1.2.1"
+version = "1.2.2"
 description = "ZAILON Universal Mod Launcher"
 authors = ["souanpt"]
 edition = "2021"

@@ -18,7 +18,7 @@ const LANGS: { code: Lang; flag: string; label: string }[] = [
   { code: 'ko', flag: '🇰🇷', label: '한국어' },
 ]
 
-const APP_VERSION = '1.2.1'
+const APP_VERSION = '1.2.2'
 
 function fmtTime(mins: number) {
   if (!mins) return '0m'

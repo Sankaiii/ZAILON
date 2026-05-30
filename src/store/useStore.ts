@@ -267,7 +267,7 @@ export async function checkGitHubUpdates(): Promise<{ available: boolean; versio
     const res = await fetch('https://api.github.com/repos/Sankaiii/ZAILON/releases/latest', { headers: { 'User-Agent': 'ZAILON/1.0' } })
     const j = await res.json()
     const v = (j.tag_name || '').replace(/^v/, '')
-    return { available: !!v && v !== '1.1.2', version: v, url: j.html_url || '', body: j.body || '' }
+    return { available: !!v && v !== '1.2.2', version: v, url: j.html_url || '', body: j.body || '' }
   } catch { return { available: false, version: '', url: '', body: '' } }
 }
 
