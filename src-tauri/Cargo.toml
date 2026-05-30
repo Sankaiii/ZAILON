@@ -1,6 +1,6 @@
 [package]
 name = "zailon"
-version = "1.0.0"
+version = "1.2.1"
 description = "ZAILON Universal Mod Launcher"
 authors = ["souanpt"]
 edition = "2021"
@@ -22,6 +22,7 @@ tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 zip = "2"
+discord-presence = "1.0"
 
 [profile.release]
 panic = "abort"

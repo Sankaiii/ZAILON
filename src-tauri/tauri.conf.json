@@ -1,6 +1,6 @@
 {
   "productName": "ZAILON",
-  "version": "1.0.0",
+  "version": "1.2.1",
   "identifier": "com.souanpt.zailon",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -23,7 +23,9 @@
         "visible": true
       }
     ],
-    "security": { "csp": null }
+    "security": {
+      "csp": null
+    }
   },
   "bundle": {
     "active": true,
@@ -43,8 +45,12 @@
       }
     },
     "linux": {
-      "deb": { "depends": [] },
-      "appimage": { "bundleMediaFramework": false }
+      "deb": {
+        "depends": []
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
     }
   }
 }
